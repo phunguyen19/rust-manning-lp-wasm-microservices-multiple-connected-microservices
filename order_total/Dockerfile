@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM --platform=$BUILDPLATFORM rust:1.64 AS buildbase
+FROM --platform=$BUILDPLATFORM rust:1.72 AS buildbase
 WORKDIR /src
 RUN <<EOT bash
     set -ex
@@ -15,11 +15,11 @@ RUN curl -sSf https://raw.githubusercontent.com/WasmEdge/WasmEdge/master/utils/i
 
 FROM buildbase AS build
 COPY Cargo.toml .
-COPY src ./src 
+COPY src ./src
 # Build the Wasm binary
 RUN cargo build --target wasm32-wasi --release
 # This line builds the AOT Wasm binary
-RUN /root/.wasmedge/bin/wasmedgec target/wasm32-wasi/release/order_total.wasm order_total.wasm
+ RUN /root/.wasmedge/bin/wasmedgec target/wasm32-wasi/release/order_total.wasm order_total.wasm
 
 FROM scratch
 ENTRYPOINT [ "order_total.wasm" ]

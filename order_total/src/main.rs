@@ -70,13 +70,47 @@ async fn handle_request(req: Request<Body>) -> Result<Response<Body>, anyhow::Er
             let mut order: Order = serde_json::from_slice(&byte_stream).unwrap();
 
             let client = reqwest::Client::new();
-            let rate = client.post(&*SALES_TAX_RATE_SERVICE)
+
+            let sent_request = client.post(&*SALES_TAX_RATE_SERVICE)
                 .body(order.shipping_zip.clone())
                 .send()
-                .await?
-                .text()
-                .await?
-                .parse::<f32>()?;
+                .await;
+
+            let body = match sent_request {
+                Ok(response) => response.text().await,
+                Err(e) => {
+                    dbg!(e);
+                    let err_msg = r#"{"status":"error", "message":"Cannot connect to sales tax rate service"}"#;
+                    let mut res = Response::default();
+                    *res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+                    *res.body_mut() = Body::from(err_msg);
+                    return Ok(res);
+                },
+            };
+
+            let body_text = match body {
+                Ok(text) => text,
+                Err(e) => {
+                    dbg!(e);
+                    let err_msg = r#"{"status":"error", "message":"Cannot read response from sales tax rate service"}"#;
+                    let mut res = Response::default();
+                    *res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+                    *res.body_mut() = Body::from(err_msg);
+                    return Ok(res);
+                },
+            };
+
+            let rate = match body_text.parse::<f32>() {
+                Ok(rate) => rate,
+                Err(e) => {
+                    dbg!(e);
+                    let err_msg = r#"{"status":"error", "message":"The zip code in the order does not have a corresponding sales tax rate."}"#;
+                    let mut bad_request = Response::default();
+                    *bad_request.status_mut() = StatusCode::BAD_REQUEST;
+                    *bad_request.body_mut() = Body::from(err_msg);
+                    return Ok(bad_request);
+                },
+            };
 
             order.total = order.subtotal * (1.0 + rate);
             Ok(response_build(&serde_json::to_string_pretty(&order)?))
